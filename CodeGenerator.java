@@ -131,18 +131,40 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(BlockStmt blockStmt) {
         //todo
+        String command = "";
+        for (Statement stmt : blockStmt.getStatements())
+            command += stmt.accept(this);
+        addCommand(command);
         return null;
     }
 
     @Override
     public String visit(ConditionalStmt conditionalStmt) {
         //todo
+        String command = "";
+        command += conditionalStmt.getCondition().accept(this);
+        command += "invokevirtual java/lang/Boolean/booleanValue()Z\n";
+        command += "ifeq Label" + "else" + "\n";
+
+        command += conditionalStmt.getThenBody().accept(this);
+        command += "goto Label" + "endif" + "\n";
+
+        command += "Label" + "else" + ":\n";
+        command += conditionalStmt.getElseBody().accept(this);
+        command += "Label" + "endif" + ":\n";
+
+        addCommand(command);
         return null;
     }
 
     @Override
     public String visit(FunctionCallStmt funcCallStmt) {
         //todo
+        expressionTypeChecker.setFunctioncallStmt(true);
+        String command = funcCallStmt.getFunctionCall().accept(this);
+        command += "pop\n";
+        expressionTypeChecker.setFunctioncallStmt(false);
+        addCommand(command);
         return null;
     }
 
@@ -155,6 +177,7 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(ReturnStmt returnStmt) {
         //todo
+
         return null;
     }
 
@@ -174,9 +197,9 @@ public class CodeGenerator extends Visitor<String> {
             command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
         }
         else if (operator.equals(BinaryOperator.sub)){
-            left.accept(this);
+            command += left.accept(this);
             command += "invokevirtual java/lang/Integer/intValue()I\n";
-            right.accept(this);
+            command += right.accept(this);
             command += "invokevirtual java/lang/Integer/intValue()I\n";
             command += "isub\n";
             command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
@@ -197,6 +220,34 @@ public class CodeGenerator extends Visitor<String> {
             command += "idiv\n";
             command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
         }
+        else if (operator.equals(BinaryOperator.eq)) { //fptr is void should be checked
+            command += left.accept(this);
+            command += right.accept(this);
+            command += "if_acmpne Label" + "false" + "\n";
+
+            command += "ldc 1\n";
+            command += "goto Label" + "after" + "\n";
+
+            command += "Label" + "false" + ":\n";
+            command += "ldc 0\n";
+
+            command += "Label" + "after" + ":\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
+        }
+        else if (operator.equals(BinaryOperator.neq)) { //fptr not void should be checked
+            command += left.accept(this);
+            command += right.accept(this);
+            command += "if_acmpeq Label" + "false" + "\n";
+
+            command += "ldc 1\n";
+            command += "goto Label" + "after" + "\n";
+
+            command += "Label" + "false" + ":\n";
+            command += "ldc 0\n";
+
+            command += "Label" + "after" + ":\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
+        }
         else if (operator.equals(BinaryOperator.and)){
             command += left.accept(this);
             command += "invokevirtual java/lang/Boolean/booleanValue()Z\n";
@@ -207,6 +258,7 @@ public class CodeGenerator extends Visitor<String> {
 
             command += "Label" + "false" + ":\n";
             command += "ldc 0\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
             command += "Label" + "endif" + ":\n";
         }
         else if (operator.equals(BinaryOperator.or)){
@@ -219,6 +271,7 @@ public class CodeGenerator extends Visitor<String> {
 
             command += "Label" + "true" + ":\n";
             command += "ldc 1\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
             command += "Label" + "endif" + ":\n";
         }
         else if(operator.equals(BinaryOperator.lt)){
@@ -234,6 +287,7 @@ public class CodeGenerator extends Visitor<String> {
             command += "Label" + "false" + ":\n";
             command += "ldc 0\n";
             command += "Label" + "endif" + ":\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
         }
         else if(operator.equals(BinaryOperator.gt)){
             command += left.accept(this);
@@ -248,6 +302,7 @@ public class CodeGenerator extends Visitor<String> {
             command += "Label" + "false" + ":\n";
             command += "ldc 0\n";
             command += "Label" + "endif" + ":\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
         }
         else if (operator.equals(BinaryOperator.append)){
             command = left.accept(this);
@@ -265,7 +320,7 @@ public class CodeGenerator extends Visitor<String> {
         UnaryOperator operator = unaryExpression.getOperator();
         String command = "";
         if (operator.equals(UnaryOperator.not)){
-            operand.accept(this);
+            command += operand.accept(this);
             command += "invokevirtual java/lang/Boolean/booleanValue()Z\n";
             command += "ifeq Label" + "false" + "\n";
 
@@ -275,9 +330,10 @@ public class CodeGenerator extends Visitor<String> {
             command += "Label" + "false" + ":\n";
             command += "ldc 1\n";
             command += "Label" + "after" + ":\n";
+            command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
         }
         else if (operator.equals(UnaryOperator.minus)){
-            operand.accept(this);
+            command += operand.accept(this);
             command += "invokevirtual java/lang/Integer/intValue()I\n";
             command += "ineg\n";
             command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
@@ -315,6 +371,7 @@ public class CodeGenerator extends Visitor<String> {
         String command = "";
         command += listSize.getInstance().accept(this);
         command += "invokevirtual List/getSize()I\n";
+        command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
         return command;
     }
 
@@ -328,7 +385,6 @@ public class CodeGenerator extends Visitor<String> {
     public String visit(ListValue listValue) {
         //todo
         String command = "";
-        //make ArrayList
         command += "new java/util/ArrayList\n";
         command += "dup\n";
         command += "invokespecial java/util/ArrayList/<init>()V\n";
@@ -360,12 +416,14 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(IntValue intValue) {
         String command = "ldc " + intValue.getConstant() + "\n";
+        command += "invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n";
         return command;
     }
 
     @Override
     public String visit(BoolValue boolValue) {
         String command = "ldc " + (boolValue.getConstant() ? 1 : 0) + "\n";
+        command += "invokestatic java/lang/Boolean/valueOf(Z)Ljava/lang/Boolean;\n";
         return command;
     }
 
