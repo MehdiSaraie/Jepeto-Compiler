@@ -95,6 +95,13 @@ public class CodeGenerator extends Visitor<String> {
 
     private void addStaticMainMethod() {
         //todo
+        String command = ".method public static main([Ljava/lang/String;)V\n";
+        command += ".limit stack 128\n";
+        command += ".limit locals 128\n";
+        command += "new Main\n";
+        command += "invokespecial Main/<init>()V\n";
+        command += ".end method\n";
+        addCommand(command);
     }
 
     private int slotOf(String identifier) {
@@ -118,12 +125,73 @@ public class CodeGenerator extends Visitor<String> {
     @Override
         public String visit(FunctionDeclaration funcDeclaration) {
         //todo
+        String command = "";
+
+        FunctionSymbolTableItem func_symbol_table;
+        try {
+            func_symbol_table = (FunctionSymbolTableItem) (SymbolTable.root.getItem(FunctionSymbolTableItem.START_KEY + funcDeclaration.getFunctionName().getName()));
+        }catch(ItemNotFoundException e){
+            func_symbol_table = null;
+        }
+
+        command += ".method " + funcDeclaration.getFunctionName().getName() + "(";
+        //Todo add arg types
+        ArrayList<Identifier> func_args = funcDeclaration.getArgs();
+        Map < String , Type > func_args_type = func_symbol_table.getArgTypes();
+
+        for(Identifier cur_arg : func_args){
+            Type cur_arg_type = func_args_type.get(cur_arg.getName());
+            if(cur_arg_type instanceof IntType)
+                command += "I";
+            else if(cur_arg_type instanceof BoolType)
+                command += "Z";
+            else if(cur_arg_type instanceof StringType)
+                command += "Ljava/lang/String;";
+            else if(cur_arg_type instanceof FptrType)
+                command += "LFptr;";
+            else if(cur_arg_type instanceof ListType)
+                command += "LList;";
+        }
+        command += ")";
+
+        //Todo add return type \n
+        Type return_type = func_symbol_table.getReturnType();
+        if(return_type instanceof IntType)
+            command += "I";
+        else if(return_type instanceof BoolType)
+            command += "Z";
+        else if(return_type instanceof StringType)
+            command += "Ljava/lang/String;";
+        else if(return_type instanceof FptrType)
+            command += "LFptr;";
+        else if(return_type instanceof ListType)
+            command += "LList;";
+        else if(return_type instanceof VoidType)
+            command += "V";
+        command += "\n";
+        //Body
+        command += ".limit stack 128\n";
+        command += ".limit locals 128\n";
+
+        //TODO Set curFuncDec
+        command += funcDeclaration.getBody().accept(this);
+        command += ".end method";
         return null;
     }
 
     @Override
     public String visit(MainDeclaration mainDeclaration) {
         //todo
+        String command = ".method public <init>()V\n";
+        command += "  .limit stack 128\n";
+        command += "  .limit locals 128\n";
+        command += "  aload_0\n";
+        command += "  invokespecial java/lang/Object/<init>()V\n";
+        command += mainDeclaration.getBody().accept(this);
+        command += "  return\n";
+        command += ".end method\n";
+
+        addCommand(command);
         return null;
     }
 
@@ -146,6 +214,7 @@ public class CodeGenerator extends Visitor<String> {
         command += "invokevirtual java/lang/Boolean/booleanValue()Z\n";
         command += "ifeq Label" + "else" + "\n";
 
+        //TODO age then nadasht chi?
         command += conditionalStmt.getThenBody().accept(this);
         command += "goto Label" + "endif" + "\n";
 
@@ -171,13 +240,43 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(PrintStmt print) {
         //todo
+
+        //Todo add printstream
+        String command = "getstatic java/lang/System/out Ljava/io/PrintStream\n";
+
+        //Todo add value
+        command += print.getArg().accept(this);
+        Type arg_type = print.getArg().accept(expressionTypeChecker);
+
+        if(arg_type instanceof IntType)
+            command += "invokevirtual java/lang/Integer/intValue()I\n";
+
+        //Todo invoke matching print function
+
+        if(arg_type instanceof IntType)
+            command += "invokevirtual java/io/PrintStream/println(I)V\n";
+        else if(arg_type instanceof BoolType)
+            command += "invokevirtual java/io/PrintStream/println(Ljava/lang/Object;)V\n";
+        else if(arg_type instanceof StringType)
+            command += "invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n";
+        //else if(arg_type instanceof ListType) TODO emtiazi
+
+        addCommand(command);
         return null;
     }
 
     @Override
     public String visit(ReturnStmt returnStmt) {
         //todo
+        String command = returnStmt.getReturnedExpr().accept(this);
+        Type expr_type = returnStmt.getReturnedExpr().accept(expressionTypeChecker);
 
+        if(expr_type instanceof VoidType)
+            command += "return\n";
+        else
+            command += "areturn\n";
+
+        addCommand(command);
         return null;
     }
 
@@ -350,7 +449,19 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(Identifier identifier) {
         //todo
-        return null;
+        String command = "";
+        try{
+            FunctionSymbolTableItem func = (FunctionSymbolTableItem) SymbolTable.root.getItem(FunctionSymbolTableItem.START_KEY + identifier.getName());
+            command += "new Fptr\n";
+            command += "dup\n";
+            command += "aload_0\n";
+            command += "ldc " + "\"" + identifier.getName() + "\"\n";
+            command += "invokespecial Fptr/<init>(Ljava/lang/Object;Ljava/lang/String;)V\n";
+        }catch (ItemNotFoundException e){
+            int slot_number = slotOf(identifier.getName());
+            command += "aload " + String.valueOf(slot_number) + "\n";
+        }
+        return command;
     }
 
     @Override
@@ -378,7 +489,61 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(FunctionCall funcCall) {
         //todo
-        return null;
+        String command = funcCall.getInstance().accept(this);
+
+        ArrayList<Expression> args = funcCall.getArgs();
+        Map<Identifier , Expression> args_with_keys = funcCall.getArgsWithKey();
+
+        command += "new java/util/ArrayList\n";
+        command += "dup\n";
+        command += "invokespecial java/util/ArrayList/<init>()V\n";
+
+        int arrayList_slot = slotOf("");
+        if (arrayList_slot > 3)
+            command += "astore " + arrayList_slot + "\n";
+        else
+            command += "astore_" + arrayList_slot + "\n";
+
+        if(!args.isEmpty()){
+            for(Expression cur_arg : args){
+                if (arrayList_slot > 3)
+                    command += "aload " + arrayList_slot + "\n";
+                else
+                    command += "aload_" + arrayList_slot + "\n";
+                command += cur_arg.accept(this);
+                command += "invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n";
+                command += "pop\n";
+            }
+        }else if(!args_with_keys.isEmpty()){
+            FptrType fptr = (FptrType) funcCall.getInstance().accept(expressionTypeChecker);
+            FunctionSymbolTableItem func_symbol_table;
+            try {
+                func_symbol_table = (FunctionSymbolTableItem) (SymbolTable.root.getItem(FunctionSymbolTableItem.START_KEY + fptr.getFunctionName()));
+            }catch(ItemNotFoundException e){
+                func_symbol_table = null;
+            }
+
+            Map<String, Type> arg_types = func_symbol_table.getArgTypes();
+            java.util.Set<String> arg_names = arg_types.keySet();
+            for(String arg_name : arg_names){
+                if (arrayList_slot > 3)
+                    command += "aload " + arrayList_slot + "\n";
+                else
+                    command += "aload_" + arrayList_slot + "\n";
+                Expression cur_arg = args_with_keys.get(arg_name);
+                command += cur_arg.accept(this);
+                command += "invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n";
+                command += "pop\n";
+            }
+        }
+
+        if (arrayList_slot > 3)
+            command += "aload " + arrayList_slot + "\n";
+        else
+            command += "aload_" + arrayList_slot + "\n";
+
+        command += "invokevirtual Fptr/invoke(Ljava/util/ArrayList;)Ljava/lang/Object;\n";
+        return command;
     }
 
     @Override
@@ -430,6 +595,7 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(StringValue stringValue) {
         //todo
+        //TODO string ha bayad ba " vared shavand
         String command = "ldc " + stringValue.getConstant() + "\n";
         return command;
     }
