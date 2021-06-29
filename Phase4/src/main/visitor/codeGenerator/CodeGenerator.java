@@ -113,7 +113,6 @@ public class CodeGenerator extends Visitor<String> {
             curFuncDec.increaseUsedTemps();
             return curFuncDec.getArgs().size() + curFuncDec.getUsedTemps();
         }
-        int slot;
         for(int i = 0; i < curFuncDec.getArgs().size(); i++){
             if (curFuncDec.getArgs().get(i).getName().equals(identifier))
                 return i+1;
@@ -237,10 +236,8 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(BlockStmt blockStmt) {
         //todo
-        //String command = "";
         for (Statement stmt : blockStmt.getStatements())
             stmt.accept(this);
-        //addCommand(command);
         return null;
     }
 
@@ -608,7 +605,22 @@ public class CodeGenerator extends Visitor<String> {
     @Override
     public String visit(AnonymousFunction anonymousFunction) {
         //todo
-        return null;
+        String command = "";
+        try{
+            FunctionSymbolTableItem func = (FunctionSymbolTableItem) SymbolTable.root.getItem(FunctionSymbolTableItem.START_KEY + anonymousFunction.getName());
+            command += "new Fptr\n";
+            command += "dup\n";
+            command += "aload_0\n";
+            command += "ldc " + "\"" + anonymousFunction.getName() + "\"\n";
+            command += "invokespecial Fptr/<init>(Ljava/lang/Object;Ljava/lang/String;)V\n";
+        }catch (ItemNotFoundException e){
+            int slot_number = slotOf(anonymousFunction.getName());
+            if (slot_number > 3)
+                command += "aload " + String.valueOf(slot_number) + "\n";
+            else
+                command += "aload_" + String.valueOf(slot_number) + "\n";
+        }
+        return command;
     }
 
     @Override
@@ -624,7 +636,10 @@ public class CodeGenerator extends Visitor<String> {
             command += "invokespecial Fptr/<init>(Ljava/lang/Object;Ljava/lang/String;)V\n";
         }catch (ItemNotFoundException e){
             int slot_number = slotOf(identifier.getName());
-            command += "aload " + String.valueOf(slot_number) + "\n";
+            if (slot_number > 3)
+                command += "aload " + String.valueOf(slot_number) + "\n";
+            else
+                command += "aload_" + String.valueOf(slot_number) + "\n";
         }
         return command;
     }
